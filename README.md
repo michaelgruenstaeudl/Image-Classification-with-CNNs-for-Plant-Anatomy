@@ -32,3 +32,8 @@ pip install torch torchvision numpy opencv-python
 ```bash
 python3 RootXS_identification_via_CNN_image_classification.py
 ```
+
+## Output
+- Training and validation loss and accuracy per epoch
+- Predicted probabilities and predicted classes for test images
+- Training label mapping (_class_to_idx_)

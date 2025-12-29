@@ -33,6 +33,78 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
+########################################
+# DEFINING A SMALL CONVOLUTIONAL NEURAL NETWORK
+class RootCNN(nn.Module):
+''' This module does the following:
+        1. defines a convolutional neural network that takes color images
+            and extracts visual features using stacked convolution, activation,
+            pooling, and dropout layers
+        2. it then converts those extracted features into a single numeric
+            output that represents how likely the image belongs to one of two
+            classes (i.e., for binary loss function),
+'''
+    def __init__(self) -> None:
+        super().__init__()
+
+        # Defining a model with sequential layers
+        self.features = nn.Sequential(
+
+            # First convolution layer:
+            # It takes a 3-channel color image (RGB) as input
+            # and produces 32 feature maps using 3x3 filters
+            nn.Conv2d(3, 32, kernel_size=3, padding=0),
+            # Applying a non-linear activation so the CNN can learn complex
+            # patterns instead of simple linear ones
+            nn.ReLU(inplace=True),
+            # Reducing the spatial size of the feature maps by half to add
+            # some position tolerance
+            nn.MaxPool2d(2),
+            # Drop 25 percent of values randomly during training in order
+            # to reduce overfitting and improve generalization
+            nn.Dropout(0.25),
+
+            # Second convolution layer:
+            # It takes the 32 feature maps from the first layer
+            # and produces 64 higher-level feature maps
+            nn.Conv2d(32, 64, kernel_size=3, padding=0),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Dropout(0.25),
+        )
+
+        # The number of features of the first fully connected layer of the CNN
+        # depends on the exact image size and on how the network convolution
+        # layers reduce it. Instead of guessing the feature number, I initially
+        # pass a dummy image through the CNN to infer the correct size.
+        with torch.no_grad():
+            dummy = torch.zeros(1, 3, IMG_H, IMG_W)
+            out = self.features(dummy)
+            flat_dim = out.view(1, -1).shape[1]
+
+        # Object for taking extracted image features and producing a single
+        # logit that is later used to for binary classification
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(flat_dim, 64),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            nn.Linear(64, 1)  # logits
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    ''' This function defines the data flow during line 'logits = model(x_test)':
+            1. It receives x, which is a batch of images.
+            2. It passes x through self.features, where visual patterns are
+               extracted.
+            3. It then passes the result through self.classifier, where those
+               patterns are turned into a final prediction.
+            4. It returns the result, which is a single logit per image.
+    '''
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
+
 ################################################################################
 # TRAINING THE MODEL
 ################################################################################

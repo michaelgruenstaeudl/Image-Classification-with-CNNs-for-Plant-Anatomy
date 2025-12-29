@@ -33,7 +33,29 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
+################################################################################
+# ACTUALLY TRAIN THE DATA
 
+# STEP 1. Instantiate the model and move it to DEVICE (GPU if available)
+model = RootCNN().to(DEVICE)
+
+# STEP 2. Specify the loss function to measure how well the predicted probabilities match the binary targets
+criterion = nn.BCEWithLogitsLoss()  # better than sigmoid activation and binary cross-entropy loss function in Keras
+
+# STEP 3. Specify the output optimization using RMSprop
+optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3)  # roughly analogous to Keras "rmsprop"
+
+# STEP 4 (ML OCCRUS HERE). Iterating over all samples (i.e. epoch) to calculate loss functionn and perform optimization
+# Each epoch runs one training pass over train_loader and one evaluation pass over val_loader
+for epoch in range(1, EPOCHS + 1):
+    tr_loss, tr_acc = run_epoch(model, train_loader, optimizer, criterion)
+    va_loss, va_acc = run_epoch(model, val_loader, None, criterion)
+
+    print(
+        f"Epoch {epoch:02d}/{EPOCHS} | "
+        f"train loss {tr_loss:.4f} acc {tr_acc:.4f} | "
+        f"val loss {va_loss:.4f} acc {va_acc:.4f}"
+    )
 
 ################################################################################
 # LOCATE THE IMAGE DATA ON DISK, RESIZE IMAGES, AND RUN CODE
@@ -65,25 +87,34 @@ def load_test_images(paths: List[str], size: Tuple[int, int]) -> torch.Tensor:
     # Returning images as a single tensor of shape (N, 3, H, W)
     return torch.from_numpy(np.stack(imgs, axis=0))
 
-# STEP 1. Load the test images
+# STEP 5. Load the test images
 test_paths = sorted(glob(os.path.join(TEST_DIR, "*.jpg")))
 x_test = load_test_images(test_paths, (IMG_W, IMG_H)).to(DEVICE)
 
-# STEP 2. Switch CNN to evaluation mode
+# STEP 6. Switch CNN to evaluation mode
 model.eval()
 
-# STEP 3. Run CNN with disabled gradients (for better speed and memory efficiency)
+# STEP 7. Run CNN with disabled gradients (for better speed and memory efficiency)
 with torch.no_grad():
-    # 3.1. Infer the logits for the model (i.e., the unnormalized output of the final linear layer)
+    # 7.1. Infer the logits for the model (i.e., the unnormalized output of the final linear layer)
     logits = model(x_test)
-    # 3.2. Convert logits to probabilities via sigmoid function
+    # 7.2. Convert logits to probabilities via sigmoid function
     probs = torch.sigmoid(logits).squeeze(1).cpu().numpy()
-    # 3.3. Infer predicted classes with probabilities at 0.5 or larger
+    # 7.3. Infer predicted classes with probabilities at 0.5 or larger
     preds = (probs >= 0.5).astype(int)
 
+################################################################################
+# PRINT OUTPUTS
+
 print("Predicted probabilities:", probs)
+# EXAMPLE OUTPUT:  Predicted probabilities: [0.91, 0.12]
+
 print("Predicted classes (0 or 1):", preds)
-print("Training class_to_idx:", full_ds.class_to_idx) # Print training labels to mapping (use folder name as index names)
+# EXAMPLE OUTPUT:  Predicted classes (0 or 1): [1, 0]
+
+# Print training labels to mapping (use folder name as index names)
+print("Training class_to_idx:", full_ds.class_to_idx)
+# EXAMPLE OUTPUT:  Training class_to_idx: {'dicot': 0, 'monocot': 1}
 
 ################################################################################
 # EXTENDED USAGE

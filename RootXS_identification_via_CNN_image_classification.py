@@ -34,6 +34,72 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 
 ################################################################################
+# FUNCTIONS FOR TRAINING AND EVALUATING THE DATA
+
+def binary_accuracy_from_logits(logits: torch.Tensor, y: torch.Tensor) -> float:
+''' Helper function to convert logits to probabilities using a sigmoid function,
+    applies a threshold of 0.5 to infer predicted classes, and returns
+    the mean accuracy across the given batch.
+'''
+    probs = torch.sigmoid(logits)
+    preds = (probs >= 0.5).float()
+    return (preds.eq(y)).float().mean().item()
+
+def run_epoch(
+    model: nn.Module,
+    loader: DataLoader,
+    optimizer: torch.optim.Optimizer | None,
+    criterion: nn.Module,
+    ) -> Tuple[float, float]:
+''' Ths function specifies both CNN training and CNN validation:
+        - If an optimizer is provided, it runs in training mode, does backward(), and updates weights.
+        - If no optimizer, it runs in evaluation mode (no gradient updates).
+    Input:
+        1. nn.Module: this is the neural network being trained or evaluated;
+            during training: parameters are updated; during validation: only used for forward passes
+        2. DataLoader: supplies the image and label data batch by batch
+        3. torch.optim.Optimizer or None: determines whether the function performs training or evaluation;
+            during training (optimizer provided): gradients are computed, model weights are updated
+            during evaluation (no optimizer): no backpropagation, no weight updates
+        4. LossFunction: nn.BCEWithLogitsLoss
+    Output:
+        1. avg_loss: indicates how well prediction matches target over all batches in the epoch; lower is better
+        2. avg_accuracy: specifies fraction of correct predictions over all batches in the epoch; higher is better
+'''
+
+    is_train = optimizer is not None
+    model.train(is_train)
+
+    total_loss = 0.0
+    total_acc = 0.0
+    batches = 0
+
+    # Supplying the image and label data batch by batch
+    for x, y in loader:
+        # x is a batch of images with shape (batch_size, 3, H, W)
+        x = x.to(DEVICE, non_blocking=True)
+
+        # y is a batch of binary labels with shape (batch_size,)
+        y = y.to(DEVICE, non_blocking=True).float().view(-1, 1)
+
+        if is_train:
+            optimizer.zero_grad(set_to_none=True)
+
+        logits = model(x)
+        loss = criterion(logits, y)
+
+        if is_train:
+            loss.backward()
+            optimizer.step()
+
+        total_loss += loss.item()
+        total_acc += binary_accuracy_from_logits(logits.detach(), y)
+        batches += 1
+
+    return total_loss / max(batches, 1), total_acc / max(batches, 1)
+
+
+################################################################################
 # ACTUALLY TRAIN THE DATA
 
 # STEP 1. Instantiate the model and move it to DEVICE (GPU if available)
@@ -45,7 +111,7 @@ criterion = nn.BCEWithLogitsLoss()  # better than sigmoid activation and binary 
 # STEP 3. Specify the output optimization using RMSprop
 optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-3)  # roughly analogous to Keras "rmsprop"
 
-# STEP 4 (ML OCCRUS HERE). Iterating over all samples (i.e. epoch) to calculate loss functionn and perform optimization
+# STEP 4 (ML OCCRUS HERE). Iterating over all samples (i.e. epoch) to calculate loss function and perform optimization
 # Each epoch runs one training pass over train_loader and one evaluation pass over val_loader
 for epoch in range(1, EPOCHS + 1):
     tr_loss, tr_acc = run_epoch(model, train_loader, optimizer, criterion)
